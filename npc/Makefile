@@ -1,4 +1,9 @@
+#default parameter
+
 BUILD_DIR = ./build
+vv = verilator
+FLAGS = -Wall --trace --exe --cc --build
+PROGRAM = *.cpp *.v
 
 test:
 	mill -i __.test
@@ -29,6 +34,7 @@ clean:
 .PHONY: test verilog help compile bsp reformat checkformat clean
 
 sim:
+	$(vv) $(FLAGS) $(PROGRAM)
 	$(call git_commit, "sim RTL") # DO NOT REMOVE THIS LINE!!!
 	@echo "Write this Makefile by yourself."
 
