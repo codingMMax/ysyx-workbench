@@ -3,7 +3,18 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include "sdb.h"
-#include<memory/paddr.h>
+#include <memory/paddr.h>
+#include <regex.h>
+typedef struct watchpoint {
+  int NO;
+  struct watchpoint *next;
+  uint64_t addr;
+  uint64_t value;
+  bool free;
+  /* TODO: Add more members if necessary */
+
+} WP;
+
 static int is_batch_mode = false;
 
 void init_regex();
@@ -129,6 +140,7 @@ static int cmd_x_scan(char* args){
   
   return 0;
   };
+
 /**
  * @brief solve the input expression
  * 
@@ -146,10 +158,12 @@ static int cmd_p(char* args){
     Log("Expression evaluation: invalid expression");
     return 0;
   }else{
-    printf("Experession result:%lu\n",result);  
+    printf("Experession result in decimal:%lu\n",result);  
   }
   return 0;
   };
+
+
 /**
  * @brief set up a watch point at specific memory
  * stop the program when the watched memroy value is changed.
@@ -157,14 +171,39 @@ static int cmd_p(char* args){
  * @param args input memory/register 
  * @return 0 if operate successfully, -1 if error.
  */
-static int cmd_w(char* args){return 0;};
+static int cmd_w(char* args){
+    if(args == NULL){
+    Log("Please enter complete command");
+    return 0 ;
+  }
+
+/** regex parameters**/
+  enum regType {TK_REG,TK_HEX};
+  
+  struct rule {
+  const char *regex;
+  int token_type;
+} rules[] = {
+  {"ra|[sgt]p|[ast][0-9]",TK_REG},
+  {"\\$0",TK_REG}
+};
+  printf("%s\n",args);
+  
+  return 0;
+};
 /**
  * @brief delete the watch point.
  * 
  * @param args input watch point location/addr/number.
  * @return 0 if operate successfully, -1 if error.
  */
-static int cmd_d(char* args){return 0;};
+static int cmd_d(char* args){
+  if(args == NULL){
+      Log("Please enter complete command");
+      return 0 ;
+  }
+
+  return 0;};
 
 static struct {
   const char *name;

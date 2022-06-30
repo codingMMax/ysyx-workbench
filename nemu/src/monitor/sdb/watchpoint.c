@@ -12,87 +12,93 @@ typedef struct watchpoint {
 
 } WP;
 
+static int numWP = 0;
 static WP wp_pool[NR_WP] = {};
-static WP *head = NULL, *free_ = NULL;
-
+static WP *head = NULL;
+static WP *free_head = NULL;
+/**
+ * @brief initial the watchpoint pool
+ * 
+ */
 void init_wp_pool() {
   int i;
   for (i = 0; i < NR_WP; i ++) {
-    wp_pool[i].NO = i;
+    // assign index and next ptr
+    wp_pool[i].NO = -1; // default number for all the free wp is 0
     wp_pool[i].next = (i == NR_WP - 1 ? NULL : &wp_pool[i + 1]);
     wp_pool[i].free = true;
   }
 
   head = NULL;
-  free_ = wp_pool;
+  free_head = wp_pool;
 }
-/**
- * @brief return a wp pointer from free wp_pool
- * 
- * @return WP* new free wp pointer
- */
-WP* new_wp(){
-  // get the a free WP from pool.
-  WP curr_free;
-  int i;
-  for(i = 0; i < NR_WP; i++){
-    if(wp_pool[i].free)
-    break;
-  }
-  //modify the found wp element parameters
-  curr_free = wp_pool[i];
-  curr_free.free = false;
-  curr_free.next = NULL;    
-  
-// move free_ pointer to next wp in the pool
-  if(i == NR_WP-1){
-    free_ = NULL;
-  }else{
-    free_ = &wp_pool[i+1];
-  }
 
-// add the new wp into head list
-  if(head == NULL){
-    // empty head list
-    head = &curr_free;
-    return head;
+/**
+ * @brief insert the curr WP* into specified linked list
+ * 
+ * @param curr current input wp*
+ * @param free 1: insert to free linkedlist, 0: insert to allocaed linkedlist 
+ */
+void insertToHead(WP* curr, bool free){
+  assert(curr != NULL);
+  if(free){
+  //insert the curr element to free linkedlist
+    curr->free = true;
+    curr->next = free_head;
+    free_head = curr;
+  }else{
+  //insert the curr element to allocated linkedlist
+    curr->free = false;
+    curr->next = head;
+    head = curr;
   }
-  else{
-    // not empty head list
-  WP* curr = head;
-  while(curr->next != NULL){
-    curr = curr->next;
+}
+
+/**
+ * @brief find a valid free element
+ * 
+ * @return WP*  processed free element
+ */
+WP* new_wp() {
+  if(free_head == NULL){
+    assert(numWP == 32);
+    Log("NO free Watch Point avaliable");
+    return NULL;
   }
-  curr->next = &curr_free;
-  return &curr_free;
-  }
-  
-  
+// choose the free_head as new_wp
+  WP* currFree = free_head;
+// move free_head to next element
+  free_head = free_head->next;
+  insertToHead(currFree,false);
+  currFree->NO = numWP;
+  numWP ++;
+
+  return currFree;
 }
 /**
- * @brief return the wp to free wp_pool
+ * @brief free the input wp*
  * 
+ * @param wp input wp*
  */
 void free_wp(WP* wp){
-  wp->free = false;
-  // free the head node
-  if(head == wp){
-    wp->next = free_;
-    free_ = wp;
-    head = NULL;
-    return;
-  }else{
-    WP* curr = head;
-    WP* prev = head;
-    while(curr != wp){
-      prev = curr;
-      curr = prev->next;
-    }
-    // insert to free_ head
-    prev->next = curr->next;
-    curr->next = free_;
-    free_ = curr;
-    return;
-
+  assert(wp->free == false);
+  // if free the head
+  if(wp == head){
+    //move head to next element
+    head = head->next;
+    insertToHead(wp,true);
   }
+  else{
+    WP* prev = head;
+    while (prev->next != wp)
+    {
+    // get previous element
+      prev = prev->next;
+    }
+    // re-arrange the pointer
+    prev->next = wp->next;
+    insertToHead(wp,true);
+  }
+  numWP --;
+  wp->NO = -1;
 }

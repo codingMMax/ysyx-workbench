@@ -40,20 +40,21 @@ static struct rule {
   {"-",TK_SUB},          // sub
   {"\\*",TK_MUL},          // multiply
   {"/",TK_DIV},          // divide
+  {"^(0x)[0-9]+",TK_HEX},
   {"^(-[0-9]|[0-9])[0-9]*",TK_NUMBER},
-  //{"\\d+",TK_NUMBER},
-  // {"(?!0x)\\d+",TK_NUMBER},
   {"\\(",TK_LEFTBRACK},
   {"\\)",TK_RIGHTBRACK},
   {"ra|[sgt]p|[ast][0-9]",TK_REG},
-  {"\\$0",TK_REG},
-  {"0x[\\da-f]+",TK_HEX}
+  {"\\$0",TK_REG}
+  
 
 };
 
 #define NR_REGEX ARRLEN(rules)
 
 static regex_t re[NR_REGEX] = {};
+
+
 
 /* Rules are used for many times.
  * Therefore we compile them only once before any usage.
@@ -79,7 +80,8 @@ typedef struct token {
 
 static Token tokens[32] __attribute__((used)) = {};
 static int nr_token __attribute__((used))  = 0;
-static bool make_token(char *e) {
+
+bool make_token(char *e) {
   int position = 0;
   int i;
   regmatch_t pmatch;
@@ -91,6 +93,7 @@ static bool make_token(char *e) {
     for (i = 0; i < NR_REGEX; i ++) {
         if(nr_token > 31){
           Log("Total tokens exceed limit, expression is too long");
+          return false;
         }
       // regex match
       if (regexec(&re[i], e + position, 1, &pmatch, 0) == 0 && pmatch.rm_so == 0) {
@@ -109,7 +112,6 @@ static bool make_token(char *e) {
           nr_token ++;
           break;
 
-
           case TK_SUB:
          // printf("TK_SUB token detected\n");
           tokens[nr_token].type = TK_SUB;
@@ -123,7 +125,6 @@ static bool make_token(char *e) {
           strcpy(tokens[nr_token].str,"/\0");      
           nr_token ++;
           break;
-
 
           case TK_MUL:
          // printf("TK_MUL token detected\n");
@@ -146,10 +147,10 @@ static bool make_token(char *e) {
             return false;
           }
           case TK_REG:
-          printf("TK_REG token detected\n");
+         // printf("TK_REG token detected\n");
           tokens[nr_token].type = TK_REG;
           strncpy(tokens[nr_token].str,substr_start,substr_len);
-          printf("substr_len:%d,stored digits:%s\n",substr_len,tokens[nr_token].str);
+         // printf("substr_len:%d,stored digits:%s\n",substr_len,tokens[nr_token].str);
           nr_token ++;
           break;
 
@@ -170,25 +171,33 @@ static bool make_token(char *e) {
           break;          
           
           case TK_NOTYPE:
-         // printf("TK_NOTYPE token detected\n");
+          // printf("TK_NOTYPE token detected\n");
           break;
 
+          case TK_HEX:
+          // printf("HEX detected\n");
+          tokens[nr_token].type = TK_HEX;
+          strncpy(tokens[nr_token].str,substr_start,substr_len);  
+          unsigned long decimal;         
+          sscanf(tokens[nr_token].str,"%lx",&decimal);
+        //  printf("The stroed hex digits:%s, the converted decimal digits:%lu\n",tokens[nr_token].str,decimal);
+          nr_token ++;
+          break;
 
           default:
           Log("Invalid expression token:%.*s, only support valid register name, demical number and + - * / operation",substr_len, substr_start);
           break;
         }
-
+        // break the for loop
+        break;
       
       }
-
     }
-    // if (i == NR_REGEX) {
-    //   Log("no match at position %d\n%s\n%*.s^\n", position, e, position, "");
-    //   //return false;
-    //   }
+    if (i == NR_REGEX) {
+      Log("no match at position %d\n%s\n%*.s^\n", position, e, position, "");
+      return false;
+      }
   }
-
       if(braketComplete != 0){
           printf("Please enter complete parenthese\n");
           return false;
@@ -242,7 +251,7 @@ int findMainOperator(int start,int end){
   for(int i = start; i <= end; i++){
     //collect all the valid oprators in the expression
     // store the index in array
-    if(tokens[i].type != TK_NUMBER && tokens[i].type != TK_LEFTBRACK && tokens[i].type != TK_RIGHTBRACK && tokens[i].type != TK_REG){
+    if(tokens[i].type == TK_MUL || tokens[i].type == TK_ADD || tokens[i].type == TK_DIV || tokens[i].type == TK_SUB){
       opIndex[numOp] = i;
       numOp ++;
     }
@@ -266,6 +275,83 @@ int findMainOperator(int start,int end){
   return mainOp;
 
 }
+
+void showTokens(){
+  for (int i = 0; i < nr_token; i++)
+  {
+    /* code */
+    printf("Token[%d].str in word_t: 0x%lx type:%d; ",i,*(word_t*)tokens[i].str,tokens[i].type);
+    if((i+1) % 4 == 0)
+    printf("\n");
+  }
+  printf("\n");
+}
+// shift all the tokens 1unit ahead
+// and reset the last token element as empty
+void tokenShiftandRemove(int start, int end){
+  for(int i = start; i < end;i ++){
+    memset(tokens[i].str,0,32 * sizeof(char));
+    memcpy(tokens[i].str,tokens[i+1].str,sizeof(word_t));
+    tokens[i].type = tokens[i+1].type;
+  }
+
+    memset(tokens[end].str,0,32);
+    tokens[end].type = 0;
+    nr_token --;
+
+}
+/**
+ * @brief replace the address with read memory data
+ *  ,remove the de-reference * token and shift the whole tokens 1 elemen ahead
+ * 
+ */
+void deReference( bool * succ){
+  Log("Dereference check");
+  if(nr_token == 1) return;
+  bool tokenShow = false;
+  for(int i = 0; i < nr_token-1;i ++){
+    if(tokens[i].type == TK_MUL && (i == 0 || tokens[i+1].type == TK_REG || tokens[i+1].type == TK_HEX)){
+      tokenShow = true;
+      printf("De-reference detected\nTokens before Shift & Repalcement\n");
+      showTokens();    
+      /* dereference format: *reg / *0x.. */
+      if(tokens[i+1].type == TK_REG){
+        
+        word_t content = isa_reg_str2val(tokens[i+1].str,succ);
+        printf("Register Dereference:%s, Content in Register:0x%lx \n",tokens[i+1].str,content);
+        if(!(*succ)){
+          return;
+        }
+        // copy de-referenced content
+        memset(tokens[i].str,0,32*sizeof(char));
+       // printf("Memcpy set token[%d] str:%lx\n",i,*(word_t*)tokens[i].str);
+        memcpy(tokens[i].str,&content,sizeof(word_t));
+       // printf("After Memcpy token[%d] str in word_t:%lx in str:%s\n",i,*(word_t*)tokens[i].str,tokens[i].str);
+        tokenShiftandRemove(i,nr_token-1);
+        continue;
+      }
+      if(tokens[i+1].type == TK_HEX){
+        // copy de-referenced content
+        paddr_t addr;
+        sscanf(tokens[i+1].str,"%x",&addr);
+        word_t content = paddr_read(addr,4);
+       // printf("Address Dereference:%s, Content in Address:0x%lx \n",tokens[i].str,content);
+        memset(tokens[i].str,0,32*sizeof(char));
+       // printf("Memcpy set token[%d] str word_t:0x%lx\n",i,*(word_t*)tokens[i].str);
+        memcpy(tokens[i].str,&content,sizeof(word_t));
+       // printf("After Memcpy token[%d] str word_t:0x%lx\n",i,*(word_t*)tokens[i].str);
+        tokenShiftandRemove(i,nr_token-1);
+        continue;
+      }
+      
+    }
+  }
+  if(tokenShow){
+    printf("De-reference Finished\nTokens after Shift & Repalcement\n");
+    showTokens(); 
+  }
+}
+
 /**
  * @brief recursively evaluate the whole extracted tokens 
  * 
@@ -274,17 +360,32 @@ int findMainOperator(int start,int end){
  * @return word_t calculated expression result, -1 if expression is invalid
  */
 word_t evaluate(int start,int end, bool * succ){
-  word_t result;
-  printf("Token start:%s type:%d\n",tokens[start].str,tokens[start].type);
+  /*when evaluate to a single valued token, return the valid format*/
 
+  
   if(start == end){
-    printf("Single token detected\n");
+  word_t result;
+  switch (tokens[start].type){
+
+    case TK_REG:
+    result = isa_reg_str2val(tokens[start].str,succ);
+    break;
+    
+    case TK_HEX:
+    sscanf(tokens[start].str,"%lx",&result);
+    break;
+
+    default:
+    Log("Non-Value token detected:%s",tokens[start].str);
     sscanf(tokens[start].str,"%lu",&result);
+    }
+    Log("Input Token %s, type:%d",tokens[start].str,tokens[start].type);
     return result;
   }
+
+  
   // check starting and end prathenthese
   if(tokens[start].type == TK_LEFTBRACK){
-
     if(checkParenthese(start,end)){
     //surrouned by pratheses evaluate the inner expression
     printf("Prathese check: 282 line\n");
@@ -294,8 +395,8 @@ word_t evaluate(int start,int end, bool * succ){
     Log("Invalid expression: prathenses incomplete");
       return -1;
    }
-  // no prathenthese token must start and end with digits 
-  } else if (tokens[start].type == TK_NUMBER){// && tokens[end].type == TK_NUMBER){
+  // no prathenthese token must start and end with digits or Register Value or Hex number
+  } else if (tokens[start].type == TK_NUMBER || tokens[start].type == TK_HEX || tokens[start].type == TK_REG){
       // evaluate the inner operations
      int mainOperatorPos = findMainOperator(start,end);
      printf("Main operator:%s, type: %d\n",tokens[mainOperatorPos].str,tokens[mainOperatorPos].type);
@@ -316,96 +417,40 @@ word_t evaluate(int start,int end, bool * succ){
       Log("Invalid expression: zero value in division");
       return -1;
     }else{
-      return val1 / val2;
+      return (float)((float)val1 / (float)val2);
     }
 
     default:
     Log("Invalid expression: must enter valid operator after digits");
       return -1;
     }     
-  } else if(tokens[start].type == TK_REG){
-      printf("This is register %s\n",tokens[start].str);
-      word_t regVal = isa_reg_str2val(tokens[start].str,succ);
-      if(regVal < 0){
-        return -1;
-      }else{
-        return regVal;
-      }
-  }
+  } 
   else{
     Log("Invalid expression: must start and end with digits or prathenses,\
-    Token start:%s type:%d, Token end:%s type:%d \n",tokens[start].str,tokens[start].type,tokens[end].str,tokens[end].type);
+    Token start:%s type:%d,Token end:%s type:%d \n",tokens[start].str,tokens[start].type,tokens[end].str,tokens[end].type);
     return -1;
   }
 }
-// shift all the tokens 1unit ahead
-// and reset the last token element as empty
-void tokenShiftandRemove(int start, int end){
-  for(int i = start; i < end-1;i ++){
-    memset(tokens[i].str,0,32);
-    strcpy(tokens[i].str,tokens[i+1].str);
-    tokens[i].type = tokens[i+1].type;
-  }
-    memset(tokens[end].str,0,32);
-    tokens[end].type = 0;
 
-}
-
+/**
+ * @brief calculate the input expression
+ * 
+ * @param e input parameter stirng
+ * @param success  success pointer
+ * @return word_t evaluated result in uint_64t format
+ */
 word_t expr(char *e, bool *success) {
   if (!make_token(e)) {
     *success = false;
-    return 0;
+    return -1;
   }
+  deReference(success);
+  if(!(*success)) return -1;
+  printf("Number of tokens totally %d\n",nr_token);
   word_t result;
-  /** evaluate the  expression**/
-
-  if(nr_token == 1){
-    //single expression
-    printf("Single token\n");
-    if(tokens[0].type == TK_REG){
-      result = isa_reg_str2val(tokens[0].str,success);
-    }
-    else{
-      sscanf(tokens[nr_token-1].str,"%lu",&result);    
-      }
-    return result;
-  }
-  //
+  /*Multiple Token detected*/
   int start = 0;
   int end = nr_token-1;
-  word_t content;
-    // replace the pointers with valid numbers
-    // remove the * deference operator
-  for(int i = 0; i < nr_token; i ++){
-    if(tokens[i].type == TK_MUL){
-      // dereference the register
-      if(tokens[i+1].type == TK_REG){
-        content = isa_reg_str2val(tokens[i+1].str,success);
-        if(!(*success)){
-          return -1;
-        }
-        Log("register dereference reg:%s, content:%lx \n",tokens[i+1].str,content); 
-
-      //shift the tokens and copy the dereferenced value
-        tokenShiftandRemove(i,end);
-        tokens[i].type = TK_NUMBER;
-        memcpy(tokens[i].str,(char*)&content,sizeof(word_t));
-      }
-      // dereference the heximal address
-      if(tokens[i+1].type == TK_HEX){
-        paddr_t addr;
-        sscanf(tokens[i+1].str,"%x",&addr);
-        content = paddr_read(addr,4);
-        Log("address dereference reg:%s, content:%lx \n",tokens[i+1].str,content); 
-        //shift the tokens and copy the dereferenced value
-        tokenShiftandRemove(i,end);
-        tokens[i].type = TK_NUMBER;
-        memcpy(tokens[i].str,(char*)&content,sizeof(word_t));
-      }
-
-    }
-  }
-
   result = evaluate(start,end,success);
   if(result < 0){
     *success = false;
