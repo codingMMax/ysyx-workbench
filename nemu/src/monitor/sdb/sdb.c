@@ -178,15 +178,15 @@ static int cmd_w(char* args){
   }
 
 /** regex parameters**/
-  enum regType {TK_REG,TK_HEX};
+//   enum regType {TK_REG,TK_HEX};
   
-  struct rule {
-  const char *regex;
-  int token_type;
-} rules[] = {
-  {"ra|[sgt]p|[ast][0-9]",TK_REG},
-  {"\\$0",TK_REG}
-};
+//   struct rule {
+//   const char *regex;
+//   int token_type;
+// } rules[] = {
+//   {"ra|[sgt]p|[ast][0-9]",TK_REG},
+//   {"\\$0",TK_REG}
+// };
   printf("%s\n",args);
   
   return 0;
