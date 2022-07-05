@@ -1,5 +1,4 @@
 `include "defines.v"
-
 module registerFile (
 input [`REG_BUS] dataIn,
 input regWirteEN,
@@ -65,8 +64,8 @@ if(rst == 1)
     outData2 = `ZeroWord;
     end
  else  begin
-    assign outData1 = (readReg1 == 0) ? `ZeroWord:regs[readReg1];
-    assign outData2 = (readReg2 == 0) ? `ZeroWord:regs[readReg2];
+    assign outData1 = ((readReg1 == 0) ? `ZeroWord:regs[readReg1]);
+    assign outData2 = ((readReg2 == 0) ? `ZeroWord:regs[readReg2]);
  end
 
 end
