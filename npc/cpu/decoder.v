@@ -1,7 +1,7 @@
 `include "defines.v"
 /* verilator lint_off UNUSED */
 module decoder (
-                input [`REG_BUS] instruction,
+                input [`INS_BUS] instruction,
                 output reg validIns,
                 output reg [6:0] opcode,
                 output reg [4:0] rs1,
@@ -82,7 +82,7 @@ module decoder (
                 rd   = instruction[11:7];
                 rs1  = 0;
                 rs2  = 0;
-                imm = {instruction[20],instruction[10:1],instruction[11],instruction[19:12]};
+                imm = {instruction[31],instruction[19:12],instruction[20],instruction[30:21]};
                 is12Bit = 0;
             end
             default:
